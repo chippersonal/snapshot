@@ -14,5 +14,5 @@ snapshot uses config file created by aws cli e.g.
 
 `pipenv run python user_snapshot/snapshot.py 'command' --project=projectname'
 
-'command: list,stop,start'
+'command: list,stop,start,terminate'
 'project is optional omitting applies command to all instances'
