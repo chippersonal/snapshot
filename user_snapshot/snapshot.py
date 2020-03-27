@@ -155,7 +155,11 @@ def terminate_instances(project):
 
     for i in instances:
         print("Terminating {0}.......".format(i.id))
-        i.terminate()
+        try:
+            i.terminate()
+        except botocore.exceptions.ClientError as e:
+            print("Could not terminate {0}. ".format(i.id) + str(e))
+            continue
     return
 
 if __name__ == '__main__':
