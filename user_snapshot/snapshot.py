@@ -69,7 +69,7 @@ def list_volumes(project):
 def instances():
     """Commands for instances"""
 @instances.command('snapshot',
-    help="Create snapshots of all intances")
+    help="Create snapshots of all instances")
 @click.option('--project', default=None,
     help="Only return instances attached to specified project")
 def create_snapshots(project):
@@ -129,7 +129,7 @@ def start_instances(project):
 @click.option('--project', default=None,
     help="Only terminate instances attached to specified project")
 def terminate_instances(project):
-    "Start EC2 instances by (optional) project"
+    "Terminate EC2 instances by (optional) project"
     instances = filter_instances(project)
 
     for i in instances:
