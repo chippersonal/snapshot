@@ -6,10 +6,9 @@ import datetime
 import dateutil
 
 
-
-session = boto3.Session(profile_name='snapshot')
-ec2 = session.resource('ec2')
-def filter_instances(project,server_id):
+def filter_instances(project,server_id,profile_name,region_name):
+        session = boto3.Session(profile_name=profile_name,region_name=region_name)
+        ec2 = session.resource('ec2')
         instances = []
 
         if project:
@@ -39,12 +38,18 @@ def snapshots():
     help="Only return snapshots attached to specified project")
 @click.option('--all', 'list_all', default=False, is_flag=True,
     help="List all snapshots for each volume, not just the most recent")
+@click.option('--profile', 'profile_name', default='snapshot',
+    help="Specify profile other than default to be used in request")
+@click.option('--region', 'region_name', default='us-east-1',
+			  help="The AWS region")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
-def list_snapshots(project, list_all, server_id):
+def list_snapshots(project, list_all, server_id,profile_name,region_name):
     "List EC2 snapshots by (optional) project"
+    session = boto3.Session(profile_name=profile_name,region_name=region_name)
+    ec2 = session.resource('ec2')
 
-    instances = filter_instances(project,server_id)
+    instances = filter_instances(project,server_id,profile_name,region_name)
 
     for i in instances:
         for v in i.volumes.all():
@@ -68,12 +73,18 @@ def list_snapshots(project, list_all, server_id):
     help="Only return snapshots attached to specified project")
 @click.option('--all', 'list_all', default=False, is_flag=True,
     help="List all snapshots for each volume, not just the most recent")
+@click.option('--profile', 'profile_name', default='snapshot',
+    help="Specify profile other than default to be used in request")
+@click.option('--region', 'region_name', default='us-east-1',
+			  help="The AWS region")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
-def list_snapshots(project, list_all, server_id):
+def list_snapshots(project, list_all, server_id,profile_name,region_name):
     "List EC2 snapshots by (optional) project"
+    session = boto3.Session(profile_name=profile_name,region_name=region_name)
+    ec2 = session.resource('ec2')
 
-    instances = filter_instances(project,server_id)
+    instances = filter_instances(project,server_id,profile_name,region_name)
 
     for i in instances:
         tags = { t['Key']: t['Value'] for t in i.tags or [] }
@@ -104,9 +115,13 @@ def list_snapshots(project, list_all, server_id):
     help="Define number of days required for snapshot to not be considered current, if all required, enter -1, default is 7")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID - to be applied as server_id")
-def delete_snapshots(project,force,server_id,days):
+@click.option('--profile', 'profile_name', default='snapshot',
+    help="Specify profile other than default to be used in request")
+@click.option('--region', 'region_name', default='us-east-1',
+			  help="The AWS region")
+def delete_snapshots(project,force,server_id,days,profile_name,region_name):
     "Delete snapshots for EC2 instances"
-    instances = filter_instances(project,server_id)
+    instances = filter_instances(project,server_id,profile_name,region_name)
     snap_current=False
 
     if project == None and force == False and server_id == None:
@@ -138,9 +153,13 @@ def volumes():
     help="Only return volumes attached to specified project")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
-def list_volumes(project,server_id):
+@click.option('--profile', 'profile_name', default='snapshot',
+    help="Specify profile other than default to be used in request")
+@click.option('--region', 'region_name', default='us-east-1',
+			  help="The AWS region")
+def list_volumes(project,server_id,profile_name,region_name):
     "List EC2 volumes by (optional) project"
-    instances = filter_instances(project, server_id)
+    instances = filter_instances(project, server_id,profile_name,region_name)
     for i in instances:
         for v in i.volumes.all():
             print(", ".join((
@@ -167,9 +186,13 @@ def instances():
 			  help="The instance ID - to be applied as server_id")
 @click.option('--description', 'snap_description', default="Created by chip snapshot routine - get rid when session done!",
 			  help="The instance ID - to be applied as server_id")
-def create_snapshots(project,force,server_id,days,snap_description):
+@click.option('--profile', 'profile_name', default='snapshot',
+    help="Specify profile other than default to be used in request")
+@click.option('--region', 'region_name', default='us-east-1',
+			  help="The AWS region")
+def create_snapshots(project,force,server_id,days,snap_description,profile_name,region_name):
     "Create snapshots for EC2 instances"
-    instances = filter_instances(project,server_id)
+    instances = filter_instances(project,server_id,profile_name,region_name)
     snap_current=False
 
 
@@ -177,7 +200,6 @@ def create_snapshots(project,force,server_id,days,snap_description):
         print("Requires either project name, server_id or force option!")
     else:
         for i in instances:
-            #print("Snapshot is not current if it is older than",days,"days")
             i_state = i.state['Name']
             snap_current=False
             for v in i.volumes.all():
@@ -228,14 +250,18 @@ def create_snapshots(project,force,server_id,days,snap_description):
 @instances.command('list')
 @click.option('--project', default=None,
     help="Only return instances attached to specified project")
-@click.option('--profile', default='snapshot',
-    help="Specify profile other than default to be used in request")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
-def list_instances(project,profile, server_id):
+@click.option('--profile', 'profile_name', default='snapshot',
+    help="Specify profile other than default to be used in request")
+@click.option('--region', 'region_name', default='us-east-1',
+			  help="The AWS region")
+
+def list_instances(project, server_id,profile_name,region_name):
     "List EC2 instances by (optional) project"
-    session = boto3.Session(profile_name=profile)
-    instances = filter_instances(project,server_id)
+    session = boto3.Session(profile_name=profile_name,region_name=region_name)
+    ec2 = session.resource('ec2')
+    instances = filter_instances(project,server_id,profile_name,region_name)
 
     for i in instances:
         tags = { t['Key']: t['Value'] for t in i.tags or [] }
@@ -250,14 +276,20 @@ def list_instances(project,profile, server_id):
 
 @instances.command('stop')
 @click.option('--project', default=None,
-    help="Only stop instances attached to specified project")
+    help="Only return instances attached to specified project")
 @click.option('--force',  default=False,
    help="Only return instances where no project specified if force option is applied")
+@click.option('--profile', 'profile_name', default='snapshot',
+    help="Specify profile other than default to be used in request")
+@click.option('--region', 'region_name', default='us-east-1',
+			  help="The AWS region")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
-def stop_instances(project,force,server_id):
-    "Stop EC2 instances by (optional) project"
-    instances = filter_instances(project,server_id)
+def stop_instances(project,force,server_id,profile_name,region_name):
+    "Stop EC2 instances by (optional) project or server_id"
+    session = boto3.Session(profile_name=profile_name,region_name=region_name)
+    ec2 = session.resource('ec2')
+    instances = filter_instances(project,server_id,profile_name,region_name)
     if project == None and force == False and server_id == None:
         print("Requires either project name, server_id or force option!")
     else:
@@ -272,14 +304,18 @@ def stop_instances(project,force,server_id):
 
 @instances.command('start')
 @click.option('--project', default=None,
-    help="Only start instances attached to specified project")
+    help="Only return instances attached to specified project")
 @click.option('--force',  default=False,
    help="Only return instances where no project specified if force option is applied")
+@click.option('--profile', 'profile_name', default='snapshot',
+    help="Specify profile other than default to be used in request")
+@click.option('--region', 'region_name', default='us-east-1',
+			  help="The AWS region")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
-def start_instances(project,force,server_id):
+def start_instances(project,force,server_id,profile_name,region_name):
     "Start EC2 instances by (optional) project"
-    instances = filter_instances(project,server_id)
+    instances = filter_instances(project,server_id,profile_name,region_name)
     if project == None and force == False and server_id == None:
         print("Requires either project name, server_id or force option!")
     else:
@@ -294,14 +330,18 @@ def start_instances(project,force,server_id):
 
 @instances.command('terminate')
 @click.option('--project', default=None,
-    help="Only terminate instances attached to specified project")
+    help="Only return instances attached to specified project")
 @click.option('--force',  default=False,
-       help="Only return instances where no project specified if force option is applied")
+   help="Only return instances where no project specified if force option is applied")
+@click.option('--profile', 'profile_name', default='snapshot',
+    help="Specify profile other than default to be used in request")
+@click.option('--region', 'region_name', default='us-east-1',
+			  help="The AWS region")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
-def terminate_instances(project,force,server_id):
+def terminate_instances(project,force,server_id,profile_name,region_name):
     "Terminate EC2 instances by (optional) project"
-    instances = filter_instances(project,server_id)
+    instances = filter_instances(project,server_id,profile_name,region_name)
     if project == None and force == False and server_id == None:
         print("Requires either project name, server_id or force option!")
     else:
@@ -315,14 +355,18 @@ def terminate_instances(project,force,server_id):
     return
 @instances.command('reboot')
 @click.option('--project', default=None,
-    help="Only reboot instances attached to specified project")
+    help="Only return instances attached to specified project")
 @click.option('--force',  default=False,
-       help="Only return instances where no project specified if force option is applied")
+   help="Only return instances where no project specified if force option is applied")
+@click.option('--profile', 'profile_name', default='snapshot',
+    help="Specify profile other than default to be used in request")
+@click.option('--region', 'region_name', default='us-east-1',
+			  help="The AWS region")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
-def reboot_instances(project,force,server_id):
+def reboot_instances(project,force,server_id,profile_name,region_name):
     "Reboot EC2 instances by (optional) project"
-    instances = filter_instances(project,server_id)
+    instances = filter_instances(project,server_id,profile_name,region_name)
     if project == None and force == False and server_id == None:
         print("Requires either project name, server_id or force option!")
     else:
