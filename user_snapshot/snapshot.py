@@ -27,30 +27,6 @@ def has_pending_snapshot(volume):
     snapshots = list(volume.snapshots.all())
     return snapshots and snapshots[0].state == 'pending'
 
-def has_current_snapshot(current_volume,project,server_id):
-    instances = filter_instances(project,server_id)
-    global snap_current
-    snap_current = []
-    for i in instances:
-            for v in i.volumes.all():
-                if v.id != current_volume:
-                    continue
-            else:
-                print(v.id)
-                delta = datetime.datetime.now() - datetime.timedelta(days=30)
-                for s in v.snapshots.all():
-                    snap_start = s.start_time
-                    snap_start2 = snap_start.strftime ("%Y-%m-%d %H:%M:%S")
-                    delta2 = delta.strftime ("%Y-%m-%d %H:%M:%S")
-                    if snap_start2 > delta2:
-                        snap_current = True
-                        print(delta2,snap_start2)
-                    else:
-                        snap_current = False
-                        print(snap_current)
-    return snap_current == True
-
-
 @click.group()
 def cli():
     """snapshot.py manages snapshots"""
@@ -73,17 +49,85 @@ def list_snapshots(project, list_all, server_id):
     for i in instances:
         for v in i.volumes.all():
             for s in v.snapshots.all():
+                #if expand_description is True:
                 print(", ".join((
                     s.id,
                     v.id,
                     i.id,
                     s.state,
                     s.progress,
-                    s.start_time.strftime("%c")
+                    s.start_time.strftime("%c"),
                     )))
+
 
                 if s.state == 'completed' and not list_all: break
     return
+
+@snapshots.command('expanded_list')
+@click.option('--project', default=None,
+    help="Only return snapshots attached to specified project")
+@click.option('--all', 'list_all', default=False, is_flag=True,
+    help="List all snapshots for each volume, not just the most recent")
+@click.option('--id', 'server_id', default=None,
+			  help="The instance ID")
+def list_snapshots(project, list_all, server_id):
+    "List EC2 snapshots by (optional) project"
+
+    instances = filter_instances(project,server_id)
+
+    for i in instances:
+        tags = { t['Key']: t['Value'] for t in i.tags or [] }
+        for v in i.volumes.all():
+            for s in v.snapshots.all():
+                #if expand_description is True:
+                print(", ".join((
+                    s.id,
+                    v.id,
+                    i.id,
+                    s.state,
+                    s.progress,
+                    s.start_time.strftime("%c"),
+                    tags.get('Project', '<No Project>'),
+                    s.description
+                    )))
+
+
+                if s.state == 'completed' and not list_all: break
+    return
+
+@snapshots.command('delete')
+@click.option('--project', default=None,
+    help="Only return instances attached to specified project")
+@click.option('--force',  default=False,
+   help="Only return instances where no project or server_id specified if --force True option is applied")
+@click.option('--days',   default=30,
+    help="Define number of days required for snapshot to not be considered current, if all required, enter -1, default is 7")
+@click.option('--id', 'server_id', default=None,
+			  help="The instance ID - to be applied as server_id")
+def delete_snapshots(project,force,server_id,days):
+    "Delete snapshots for EC2 instances"
+    instances = filter_instances(project,server_id)
+    snap_current=False
+
+    if project == None and force == False and server_id == None:
+        print("Requires either project name, server_id or force option!")
+    else:
+        for i in instances:
+            #print("Snapshot is not current if it is older than",days,"days")
+            i_state = i.state['Name']
+            snap_current=False
+            for v in i.volumes.all():
+                delta = datetime.datetime.now() - datetime.timedelta(days=days)
+                for s in v.snapshots.all():
+                    snap_start = s.start_time
+                    snap_start2 = snap_start.strftime ("%Y-%m-%d %H:%M:%S")
+                    delta2 = delta.strftime ("%Y-%m-%d %H:%M:%S")
+                    if snap_start2 < delta2 :
+                        s.delete()
+                        print(" Deleting snapshot",s.id," for volume",v.id," it is not current (older than ",days,"days)")
+                        continue
+                    else:
+                        print(" Not deleting snapshot",s.id," for volume",v.id," it is current (younger than ",days,"days)")
 
 @cli.group('volumes')
 def volumes():
@@ -121,7 +165,9 @@ def instances():
     help="Define number of days required for snapshot to not be considered current, if all required, enter -1, default is 7")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID - to be applied as server_id")
-def create_snapshots(project,force,server_id,days):
+@click.option('--description', 'snap_description', default="Created by chip snapshot routine - get rid when session done!",
+			  help="The instance ID - to be applied as server_id")
+def create_snapshots(project,force,server_id,days,snap_description):
     "Create snapshots for EC2 instances"
     instances = filter_instances(project,server_id)
     snap_current=False
@@ -131,22 +177,24 @@ def create_snapshots(project,force,server_id,days):
         print("Requires either project name, server_id or force option!")
     else:
         for i in instances:
-            #if snapshot_all is not True:
-            print(days)
-            #print("Not creating all snapshots applying age test")
+            #print("Snapshot is not current if it is older than",days,"days")
             i_state = i.state['Name']
             snap_current=False
             for v in i.volumes.all():
-                delta = datetime.datetime.now() - datetime.timedelta(days=days)
-                for s in v.snapshots.all():
-                    snap_start = s.start_time
-                    snap_start2 = snap_start.strftime ("%Y-%m-%d %H:%M:%S")
-                    delta2 = delta.strftime ("%Y-%m-%d %H:%M:%S")
-                    if snap_start2 > delta2 :
-                        snap_current=True
-                        print(" Skipping {0}, current snapshot already present".format(v.id))
-            #else:
-            #    snap_current=False
+                if has_pending_snapshot(v):
+                    print(" Skipping {0}, snapshot already in progress".format(v.id))
+                    snap_current=True
+                if snap_current is False:
+                    delta = datetime.datetime.now() - datetime.timedelta(days=days)
+                    for s in v.snapshots.all():
+                        snap_start = s.start_time
+                        snap_start2 = snap_start.strftime ("%Y-%m-%d %H:%M:%S")
+                        delta2 = delta.strftime ("%Y-%m-%d %H:%M:%S")
+                        if snap_start2 > delta2 :
+                            snap_current=True
+                            print(" Skipping snapshot for ",v.id,", current (less than",days,"days old) snapshot already present".format(v.id))
+                            break
+
 
             if snap_current is False:
                 try:
@@ -159,8 +207,9 @@ def create_snapshots(project,force,server_id,days):
                 if has_pending_snapshot(v):
                     print(" Skipping {0}, snapshot already in progress".format(v.id))
                     continue
-                print("Creating snapshot of {0}".format(v.id))
-                v.create_snapshot(Description="Created by chip snapshot routine - get rid when session done!")
+                print("As there is no snapshot younger than",days,"days, creating snapshot of {0}".format(v.id))
+                v.create_snapshot(Description=snap_description)
+                #v.create_snapshot(Description="Created by chip snapshot routine - get rid when session done!")
                 if i_state == 'running':
                     print("Starting {0}...".format(i.id))
                     try:
