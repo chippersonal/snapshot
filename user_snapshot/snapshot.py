@@ -116,53 +116,61 @@ def instances():
 @click.option('--project', default=None,
     help="Only return instances attached to specified project")
 @click.option('--force',  default=False,
-   help="Only return instances where no project specified if force option is applied")
+   help="Only return instances where no project or server_id specified if --force True option is applied")
+@click.option('--days',   default=7,
+    help="Define number of days required for snapshot to not be considered current, if all required, enter -1, default is 7")
 @click.option('--id', 'server_id', default=None,
-			  help="The instance ID")
-def create_snapshots(project,force,server_id):
+			  help="The instance ID - to be applied as server_id")
+def create_snapshots(project,force,server_id,days):
     "Create snapshots for EC2 instances"
     instances = filter_instances(project,server_id)
+    snap_current=False
 
 
     if project == None and force == False and server_id == None:
         print("Requires either project name, server_id or force option!")
     else:
         for i in instances:
+            #if snapshot_all is not True:
+            print(days)
+            #print("Not creating all snapshots applying age test")
             i_state = i.state['Name']
             snap_current=False
             for v in i.volumes.all():
-                delta = datetime.datetime.now() - datetime.timedelta(days=7)
+                delta = datetime.datetime.now() - datetime.timedelta(days=days)
                 for s in v.snapshots.all():
                     snap_start = s.start_time
                     snap_start2 = snap_start.strftime ("%Y-%m-%d %H:%M:%S")
                     delta2 = delta.strftime ("%Y-%m-%d %H:%M:%S")
-                    if snap_start2 > delta2:
+                    if snap_start2 > delta2 :
                         snap_current=True
                         print(" Skipping {0}, current snapshot already present".format(v.id))
+            #else:
+            #    snap_current=False
 
-                if snap_current is False:
+            if snap_current is False:
+                try:
+                    i.stop()
+                except botocore.exceptions.ClientError as e:
+                    print("Could not create snapshot for {0}. ".format(i.id) + str(e))
+                    continue
+                print("Stopping {0}...".format(i.id))
+                i.wait_until_stopped()
+                if has_pending_snapshot(v):
+                    print(" Skipping {0}, snapshot already in progress".format(v.id))
+                    continue
+                print("Creating snapshot of {0}".format(v.id))
+                v.create_snapshot(Description="Created by chip snapshot routine - get rid when session done!")
+                if i_state == 'running':
+                    print("Starting {0}...".format(i.id))
                     try:
-                        i.stop()
+                        i.start()
                     except botocore.exceptions.ClientError as e:
                         print("Could not create snapshot for {0}. ".format(i.id) + str(e))
                         continue
-                    print("Stopping {0}...".format(i.id))
-                    i.wait_until_stopped()
-                    if has_pending_snapshot(v):
-                        print(" Skipping {0}, snapshot already in progress".format(v.id))
-                        continue
-                    print("Creating snapshot of {0}".format(v.id))
-                    v.create_snapshot(Description="Created by chip snapshot routine - get rid when session done!")
-                    if i_state == 'running':
-                        print("Starting {0}...".format(i.id))
-                        try:
-                            i.start()
-                        except botocore.exceptions.ClientError as e:
-                            print("Could not create snapshot for {0}. ".format(i.id) + str(e))
-                            continue
-                        i.wait_until_running()
-                    else:
-                        print("Instance not running before snapshot taken, will not restart now")
+                    i.wait_until_running()
+                else:
+                    print("Instance not running before snapshot taken, will not restart now")
 
         print("All done!")
 
