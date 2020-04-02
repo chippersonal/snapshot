@@ -4,6 +4,44 @@ import botocore
 import click
 import datetime
 import dateutil
+import configparser
+import csv
+
+#import properties from local properties filter
+
+config = configparser.RawConfigParser()
+config.read('/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages/user_snapshot/config.properties')
+#config.read('config.properties')
+config_dict = dict(config.items('TEST_PROPERTIES'))
+#region_dict = dict(config.items('ACTIVE_REGIONS'))
+
+def get_config_dict():
+    if not hasattr(get_config_dict, 'config_dict'):
+        get_config_dict.config_dict = dict(config.items('TEST_PROPERTIES'))
+    return get_config_dict.config_dict
+
+config_properties = get_config_dict()
+#print(config_properties)
+
+
+
+#def get_active_regions():
+#    if not hasattr(get_config_dict2, 'config_dict2'):
+#       get_config_dict2.config_dict2 = dict(config.items('ACTIVE_REGIONS'))
+#       return get_config_dict2.config_dict2
+
+#active_regions = get_active_regions()
+
+#print(active_regions)
+
+user_name = config_properties['name']
+user_email = config_properties['email']
+default_region = config_properties['default_region']
+default_profile = config_properties['default_profile']
+default_create_days = int(config_properties['default_create_days'])
+default_delete_days = int(config_properties['default_delete_days'])
+
+#start program
 
 
 def filter_instances(project,server_id,profile_name,region_name):
@@ -29,8 +67,18 @@ def has_pending_snapshot(volume):
 @click.group()
 def cli():
     """snapshot.py manages snapshots"""
+@cli.group('config')
+def config():
+    """Commands for confi"""
+@config.command('list')
+def list_config():
+    print ("The following are the default options for certain parameters, all can be overridden")
+    print("User profile is ",default_profile,".")
+    print("Region is ",default_region,".")
+    print("Creation days (age of an existing snapshot which will be considerdd not current and therefore new snapshot required) is ",default_create_days,".")
+    print("Creation days (age of an existing snapshot which will be considerdd not current and therefore snapshot can be deleted) is ",default_delete_days,".")
 
-@cli.group('snapshots')
+@cli.group('snap')
 def snapshots():
     """Commands for snapshots"""
 @snapshots.command('list')
@@ -38,9 +86,9 @@ def snapshots():
     help="Only return snapshots attached to specified project")
 @click.option('--all', 'list_all', default=False, is_flag=True,
     help="List all snapshots for each volume, not just the most recent")
-@click.option('--profile', 'profile_name', default='snapshot',
+@click.option('--profile', 'profile_name', default=default_profile,
     help="Specify profile other than default to be used in request")
-@click.option('--region', 'region_name', default='us-east-1',
+@click.option('--region', 'region_name', default=default_region,
 			  help="The AWS region")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
@@ -48,13 +96,11 @@ def list_snapshots(project, list_all, server_id,profile_name,region_name):
     "List EC2 snapshots by (optional) project"
     session = boto3.Session(profile_name=profile_name,region_name=region_name)
     ec2 = session.resource('ec2')
-
     instances = filter_instances(project,server_id,profile_name,region_name)
 
     for i in instances:
         for v in i.volumes.all():
             for s in v.snapshots.all():
-                #if expand_description is True:
                 print(", ".join((
                     s.id,
                     v.id,
@@ -73,9 +119,9 @@ def list_snapshots(project, list_all, server_id,profile_name,region_name):
     help="Only return snapshots attached to specified project")
 @click.option('--all', 'list_all', default=False, is_flag=True,
     help="List all snapshots for each volume, not just the most recent")
-@click.option('--profile', 'profile_name', default='snapshot',
+@click.option('--profile', 'profile_name', default=default_profile,
     help="Specify profile other than default to be used in request")
-@click.option('--region', 'region_name', default='us-east-1',
+@click.option('--region', 'region_name', default=default_region,
 			  help="The AWS region")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
@@ -111,13 +157,13 @@ def list_snapshots(project, list_all, server_id,profile_name,region_name):
     help="Only return instances attached to specified project")
 @click.option('--force',  default=False,
    help="Only return instances where no project or server_id specified if --force True option is applied")
-@click.option('--days',   default=30,
+@click.option('--days',   default=default_delete_days,
     help="Define number of days required for snapshot to not be considered current, if all required, enter -1, default is 7")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID - to be applied as server_id")
-@click.option('--profile', 'profile_name', default='snapshot',
+@click.option('--profile', 'profile_name', default=default_profile,
     help="Specify profile other than default to be used in request")
-@click.option('--region', 'region_name', default='us-east-1',
+@click.option('--region', 'region_name', default=default_region,
 			  help="The AWS region")
 def delete_snapshots(project,force,server_id,days,profile_name,region_name):
     "Delete snapshots for EC2 instances"
@@ -144,7 +190,7 @@ def delete_snapshots(project,force,server_id,days,profile_name,region_name):
                     else:
                         print(" Not deleting snapshot",s.id," for volume",v.id," it is current (younger than ",days,"days)")
 
-@cli.group('volumes')
+@cli.group('vol')
 def volumes():
     """Commands for volumes"""
 
@@ -153,9 +199,9 @@ def volumes():
     help="Only return volumes attached to specified project")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
-@click.option('--profile', 'profile_name', default='snapshot',
+@click.option('--profile', 'profile_name', default=default_profile,
     help="Specify profile other than default to be used in request")
-@click.option('--region', 'region_name', default='us-east-1',
+@click.option('--region', 'region_name', default=default_region,
 			  help="The AWS region")
 def list_volumes(project,server_id,profile_name,region_name):
     "List EC2 volumes by (optional) project"
@@ -171,7 +217,7 @@ def list_volumes(project,server_id,profile_name,region_name):
             )))
     return
 
-@cli.group('instances')
+@cli.group('ins')
 def instances():
     """Commands for instances"""
 @instances.command('snapshot',
@@ -180,15 +226,15 @@ def instances():
     help="Only return instances attached to specified project")
 @click.option('--force',  default=False,
    help="Only return instances where no project or server_id specified if --force True option is applied")
-@click.option('--days',   default=7,
+@click.option('--days',   default=default_create_days,
     help="Define number of days required for snapshot to not be considered current, if all required, enter -1, default is 7")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID - to be applied as server_id")
 @click.option('--description', 'snap_description', default="Created by chip snapshot routine - get rid when session done!",
 			  help="The instance ID - to be applied as server_id")
-@click.option('--profile', 'profile_name', default='snapshot',
+@click.option('--profile', 'profile_name', default=default_profile,
     help="Specify profile other than default to be used in request")
-@click.option('--region', 'region_name', default='us-east-1',
+@click.option('--region', 'region_name', default=default_region,
 			  help="The AWS region")
 def create_snapshots(project,force,server_id,days,snap_description,profile_name,region_name):
     "Create snapshots for EC2 instances"
@@ -252,9 +298,9 @@ def create_snapshots(project,force,server_id,days,snap_description,profile_name,
     help="Only return instances attached to specified project")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
-@click.option('--profile', 'profile_name', default='snapshot',
+@click.option('--profile', 'profile_name', default=default_profile,
     help="Specify profile other than default to be used in request")
-@click.option('--region', 'region_name', default='us-east-1',
+@click.option('--region', 'region_name', default=default_region,
 			  help="The AWS region")
 
 def list_instances(project, server_id,profile_name,region_name):
@@ -274,14 +320,68 @@ def list_instances(project, server_id,profile_name,region_name):
         tags.get('Project', '<No Project>'))))
     return
 
+@instances.command('biglist',help="List Instances, Volumes and snapshots for every active region")
+@click.option('--project', default=None,
+    help="Only return instances attached to specified project")
+@click.option('--id', 'server_id', default=None,
+			  help="The instance ID")
+@click.option('--profile', 'profile_name', default=default_profile,
+    help="Specify profile other than default to be used in request")
+@click.option('--region', 'region_name', default=default_region,
+			  help="The AWS region")
+
+def list_instances(project, server_id,profile_name,region_name):
+    "List Instances, Volumes and snapshots for every active region"
+    f = open('/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages/user_snapshot/active_regions.csv')
+    csv_f = csv.reader(f)
+
+    for row in csv_f:
+        region_name = row[0]
+        print("Region:",region_name)
+        session = boto3.Session(profile_name=profile_name,region_name=region_name)
+        ec2 = session.resource('ec2')
+        instances = filter_instances(project,server_id,profile_name,region_name)
+        for i in instances:
+            print("Instance")
+            tags = { t['Key']: t['Value'] for t in i.tags or [] }
+            print(','.join((
+            i.id,
+            i.instance_type,
+            i.placement['AvailabilityZone'],
+            i.state['Name'],
+            i.public_dns_name,
+            tags.get('Project', '<No Project>'))))            
+            for v in i.volumes.all():
+                print("Volumes")
+                print(", ".join((
+                    v.id,
+                    #i.id,
+                    v.state,
+                    str(v.size) + "GiB",
+                    v.encrypted and "Encrypted" or "Not Encrypted"
+                )))
+                for s in v.snapshots.all():
+                    print("Snapshots")
+                    print(", ".join((
+                        s.id,
+                        #v.id,
+                        #i.id,
+                        s.state,
+                        s.progress,
+                        s.start_time.strftime("%c"),
+                        #tags.get('Project', '<No Project>'),
+                        s.description
+                        )))
+        continue
+
 @instances.command('stop')
 @click.option('--project', default=None,
     help="Only return instances attached to specified project")
 @click.option('--force',  default=False,
    help="Only return instances where no project specified if force option is applied")
-@click.option('--profile', 'profile_name', default='snapshot',
+@click.option('--profile', 'profile_name', default=default_profile,
     help="Specify profile other than default to be used in request")
-@click.option('--region', 'region_name', default='us-east-1',
+@click.option('--region', 'region_name', default=default_region,
 			  help="The AWS region")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
@@ -307,9 +407,9 @@ def stop_instances(project,force,server_id,profile_name,region_name):
     help="Only return instances attached to specified project")
 @click.option('--force',  default=False,
    help="Only return instances where no project specified if force option is applied")
-@click.option('--profile', 'profile_name', default='snapshot',
+@click.option('--profile', 'profile_name', default=default_profile,
     help="Specify profile other than default to be used in request")
-@click.option('--region', 'region_name', default='us-east-1',
+@click.option('--region', 'region_name', default=default_region,
 			  help="The AWS region")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
@@ -333,9 +433,9 @@ def start_instances(project,force,server_id,profile_name,region_name):
     help="Only return instances attached to specified project")
 @click.option('--force',  default=False,
    help="Only return instances where no project specified if force option is applied")
-@click.option('--profile', 'profile_name', default='snapshot',
+@click.option('--profile', 'profile_name', default=default_profile,
     help="Specify profile other than default to be used in request")
-@click.option('--region', 'region_name', default='us-east-1',
+@click.option('--region', 'region_name', default=default_region,
 			  help="The AWS region")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
@@ -358,9 +458,9 @@ def terminate_instances(project,force,server_id,profile_name,region_name):
     help="Only return instances attached to specified project")
 @click.option('--force',  default=False,
    help="Only return instances where no project specified if force option is applied")
-@click.option('--profile', 'profile_name', default='snapshot',
+@click.option('--profile', 'profile_name', default=default_profile,
     help="Specify profile other than default to be used in request")
-@click.option('--region', 'region_name', default='us-east-1',
+@click.option('--region', 'region_name', default=default_region,
 			  help="The AWS region")
 @click.option('--id', 'server_id', default=None,
 			  help="The instance ID")
